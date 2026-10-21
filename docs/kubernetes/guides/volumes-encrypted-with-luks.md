@@ -43,11 +43,9 @@ parameters:
 
 Your nodes might need to have `cryptsetup` installed to mount the Volumes with LUKS.
 
-## Disabling the dm-crypt workqueues
+## Disabling dm-crypt workqueues
 
-By default, dm-crypt routes every read and write of an encrypted Volume through internal kernel workqueues. On Hetzner Cloud Volumes this adds queueing latency, most visible in the tail (p99) of write and `fsync` latency.
-
-You can open encrypted Volumes without these workqueues by adding `encryption-disable-workqueues: "true"` to the encryption secret:
+Set `encryption-disable-workqueues: "true"` in the encryption secret to open LUKS devices with `--perf-no_read_workqueue --perf-no_write_workqueue`. This reduces write latency. Requires cryptsetup 2.3.4+ and Linux 5.9+.
 
 ```yaml
 apiVersion: v1
@@ -60,9 +58,4 @@ stringData:
   encryption-disable-workqueues: "true"
 ```
 
-The driver then passes `--perf-no_read_workqueue --perf-no_write_workqueue` to `cryptsetup luksOpen`. This requires cryptsetup 2.3.4 or newer and Linux 5.9 or newer on the node.
-
-Without the workqueues, writes are encrypted in the process that issues them and reads are decrypted in the I/O completion path, instead of on dedicated kernel threads. The option is intended for CPUs with hardware AES support. Encryption CPU time may then count towards the workload's CPU usage.
-
-The option only takes effect when the driver opens the LUKS device, so Volumes that are already attached keep their current settings until they are detached and attached again, for example when the Pod moves to another node.
-
+Encryption then runs in the I/O path instead of kernel worker threads, so only use it on CPUs with AES hardware acceleration. The setting applies when a Volume is attached. Volumes that are already attached are not affected.

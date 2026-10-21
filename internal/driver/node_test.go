@@ -120,6 +120,51 @@ func TestNodeServiceNodePublishBlockVolume(t *testing.T) {
 	}
 }
 
+func TestNodeServiceNodePublishVolumeEncryptionDisableWorkqueues(t *testing.T) {
+	testCases := []struct {
+		Name     string
+		Secrets  map[string]string
+		Expected bool
+		Code     codes.Code
+	}{
+		{Name: "not set", Secrets: map[string]string{"encryption-passphrase": "pass"}, Expected: false, Code: codes.OK},
+		{Name: "true", Secrets: map[string]string{"encryption-passphrase": "pass", "encryption-disable-workqueues": "true"}, Expected: true, Code: codes.OK},
+		{Name: "false", Secrets: map[string]string{"encryption-passphrase": "pass", "encryption-disable-workqueues": "false"}, Expected: false, Code: codes.OK},
+		{Name: "invalid", Secrets: map[string]string{"encryption-passphrase": "pass", "encryption-disable-workqueues": "yes please"}, Code: codes.InvalidArgument},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			env := newNodeServerTestEnv(t)
+
+			env.volumeMountService.PublishFunc = func(_ context.Context, _ string, _ string, _ string, opts volumes.MountOpts) error {
+				if opts.EncryptionDisableWorkqueues != testCase.Expected {
+					t.Errorf("unexpected EncryptionDisableWorkqueues: %v", opts.EncryptionDisableWorkqueues)
+				}
+				return nil
+			}
+
+			_, err := env.service.NodePublishVolume(env.ctx, &proto.NodePublishVolumeRequest{
+				VolumeId:   "1",
+				TargetPath: "target",
+				VolumeCapability: &proto.VolumeCapability{
+					AccessMode: &proto.VolumeCapability_AccessMode{
+						Mode: proto.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+					AccessType: &proto.VolumeCapability_Mount{
+						Mount: &proto.VolumeCapability_MountVolume{FsType: "ext4"},
+					},
+				},
+				PublishContext: map[string]string{"devicePath": "devpath"},
+				Secrets:        testCase.Secrets,
+			})
+			if status.Code(err) != testCase.Code {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
 func TestNodeServiceNodePublishPublishError(t *testing.T) {
 	env := newNodeServerTestEnv(t)
 

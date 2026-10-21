@@ -5,6 +5,7 @@ package integration
 import (
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/hetznercloud/csi-driver/internal/volumes"
@@ -30,11 +31,21 @@ func TestCryptSetup(t *testing.T) {
 	}
 	decryptedName := name + "-decrypted"
 
-	if err := cryptSetup.Open(ctx, device, decryptedName, passphrase); err != nil {
+	if err := cryptSetup.Open(ctx, device, decryptedName, passphrase, volumes.OpenOpts{DisableWorkqueues: true}); err != nil {
 		t.Fatal(err)
 	}
 	decryptedDevice := "/dev/mapper/" + decryptedName
 	defer runCmd("cryptsetup", "luksClose", decryptedName)
+
+	status, err := runCmd("cryptsetup", "status", decryptedName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, flag := range []string{"discards", "no_read_workqueue", "no_write_workqueue"} {
+		if !strings.Contains(status, flag) {
+			t.Fatalf("expected dm-crypt flag %s in status: %s", flag, status)
+		}
+	}
 
 	if _, err := runCmd("mkfs.ext4", decryptedDevice); err != nil {
 		t.Fatal(err)

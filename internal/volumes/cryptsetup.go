@@ -42,7 +42,15 @@ func (cs *CryptSetup) Format(ctx context.Context, devicePath string, passphrase 
 	return nil
 }
 
-func (cs *CryptSetup) Open(ctx context.Context, devicePath string, luksDeviceName string, passphrase string) error {
+// OpenOpts specifies optional parameters for opening a LUKS device.
+type OpenOpts struct {
+	// DisableWorkqueues bypasses the dm-crypt read and write workqueues
+	// (--perf-no_read_workqueue, --perf-no_write_workqueue). Requires
+	// cryptsetup >= 2.3.4 and Linux >= 5.9.
+	DisableWorkqueues bool
+}
+
+func (cs *CryptSetup) Open(ctx context.Context, devicePath string, luksDeviceName string, passphrase string, opts OpenOpts) error {
 	active, err := cs.IsActive(ctx, luksDeviceName)
 	if err != nil {
 		return err
@@ -54,8 +62,14 @@ func (cs *CryptSetup) Open(ctx context.Context, devicePath string, luksDeviceNam
 		"opening LUKS device",
 		"devicePath", devicePath,
 		"luksDeviceName", luksDeviceName,
+		"disableWorkqueues", opts.DisableWorkqueues,
 	)
-	output, _, err := commandWithStdin(ctx, passphrase, cryptsetupExecuable, "luksOpen", "--allow-discards", devicePath, luksDeviceName)
+	args := []string{"luksOpen", "--allow-discards"}
+	if opts.DisableWorkqueues {
+		args = append(args, "--perf-no_read_workqueue", "--perf-no_write_workqueue")
+	}
+	args = append(args, devicePath, luksDeviceName)
+	output, _, err := commandWithStdin(ctx, passphrase, cryptsetupExecuable, args...)
 	if err != nil {
 		return fmt.Errorf("unable to open LUKS device %s: %s", devicePath, output)
 	}

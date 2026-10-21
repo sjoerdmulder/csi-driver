@@ -31,7 +31,10 @@ type MountOpts struct {
 	Readonly             bool
 	Additional           []string // Additional mount options/flags passed to /bin/mount
 	EncryptionPassphrase string
-	FsFormatOptions      string
+	// EncryptionDisableWorkqueues opens the LUKS device without the dm-crypt
+	// read and write workqueues. Only applies when EncryptionPassphrase is set.
+	EncryptionDisableWorkqueues bool
+	FsFormatOptions             string
 }
 
 // MountService mounts volumes.
@@ -128,7 +131,9 @@ func (s *LinuxMountService) Publish(ctx context.Context, targetPath string, devi
 		} else if existingFSType != "crypto_LUKS" {
 			return fmt.Errorf("requested encrypted volume, but disk %s already is formatted with %s", devicePath, existingFSType)
 		}
-		if err := s.cryptSetup.Open(ctx, devicePath, luksDeviceName, opts.EncryptionPassphrase); err != nil {
+		if err := s.cryptSetup.Open(ctx, devicePath, luksDeviceName, opts.EncryptionPassphrase, OpenOpts{
+			DisableWorkqueues: opts.EncryptionDisableWorkqueues,
+		}); err != nil {
 			return err
 		}
 		luksDevicePath := GenerateLUKSDevicePath(luksDeviceName)

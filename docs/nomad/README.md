@@ -18,6 +18,8 @@ Only [Kubernetes](../kubernetes/README.md) is officially supported.
 
 2. Create a Nomad Variable for the HCLOUD token:
 
+To open the Volume without the dm-crypt read and write workqueues (`--perf-no_read_workqueue --perf-no_write_workqueue`), which lowers write and `fsync` latency, add `"encryption-disable-workqueues" = "true"` to the secrets. This requires cryptsetup 2.3.4 or newer and Linux 5.9 or newer.
+
 > [!NOTE]
 > Consider using HashiCorp Vault for secrets management, see https://developer.hashicorp.com/nomad/docs/job-specification/template#vault-kv-api-v2
 

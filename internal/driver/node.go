@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 
 	proto "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
@@ -44,7 +45,24 @@ func NewNodeService(
 	}
 }
 
-const encryptionPassphraseKey = "encryption-passphrase"
+const (
+	encryptionPassphraseKey        = "encryption-passphrase"
+	encryptionDisableWorkqueuesKey = "encryption-disable-workqueues"
+)
+
+// parseEncryptionDisableWorkqueues reads the optional
+// encryption-disable-workqueues secret key. A missing key means false.
+func parseEncryptionDisableWorkqueues(secrets map[string]string) (bool, error) {
+	value, ok := secrets[encryptionDisableWorkqueuesKey]
+	if !ok || value == "" {
+		return false, nil
+	}
+	disable, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("invalid value %q for secret key %s: must be a boolean", value, encryptionDisableWorkqueuesKey)
+	}
+	return disable, nil
+}
 
 func (s *NodeService) NodeStageVolume(_ context.Context, _ *proto.NodeStageVolumeRequest) (*proto.NodeStageVolumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "not supported")
@@ -67,21 +85,28 @@ func (s *NodeService) NodePublishVolume(ctx context.Context, req *proto.NodePubl
 		return nil, status.Error(codes.InvalidArgument, "missing device path")
 	}
 
+	disableWorkqueues, err := parseEncryptionDisableWorkqueues(req.GetSecrets())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
 	var opts volumes.MountOpts
 	switch {
 	case req.GetVolumeCapability().GetBlock() != nil:
 		opts = volumes.MountOpts{
-			BlockVolume:          true,
-			EncryptionPassphrase: req.GetSecrets()[encryptionPassphraseKey],
+			BlockVolume:                 true,
+			EncryptionPassphrase:        req.GetSecrets()[encryptionPassphraseKey],
+			EncryptionDisableWorkqueues: disableWorkqueues,
 		}
 	case req.GetVolumeCapability().GetMount() != nil:
 		mount := req.GetVolumeCapability().GetMount()
 		opts = volumes.MountOpts{
-			FSType:               mount.GetFsType(),
-			Readonly:             req.GetReadonly(),
-			Additional:           mount.GetMountFlags(),
-			EncryptionPassphrase: req.GetSecrets()[encryptionPassphraseKey],
-			FsFormatOptions:      req.GetVolumeContext()["fsFormatOptions"],
+			FSType:                      mount.GetFsType(),
+			Readonly:                    req.GetReadonly(),
+			Additional:                  mount.GetMountFlags(),
+			EncryptionPassphrase:        req.GetSecrets()[encryptionPassphraseKey],
+			EncryptionDisableWorkqueues: disableWorkqueues,
+			FsFormatOptions:             req.GetVolumeContext()["fsFormatOptions"],
 		}
 	default:
 		return nil, status.Error(codes.InvalidArgument, "publish volume: unsupported volume capability")

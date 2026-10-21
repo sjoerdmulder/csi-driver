@@ -62,5 +62,7 @@ stringData:
 
 The driver then passes `--perf-no_read_workqueue --perf-no_write_workqueue` to `cryptsetup luksOpen`. This requires cryptsetup 2.3.4 or newer and Linux 5.9 or newer on the node.
 
+Without the workqueues, writes are encrypted in the process that issues them and reads are decrypted in the I/O completion path, instead of on dedicated kernel threads. The option is intended for CPUs with hardware AES support. Encryption CPU time may then count towards the workload's CPU usage.
+
 The option only takes effect when the driver opens the LUKS device, so Volumes that are already attached keep their current settings until they are detached and attached again, for example when the Pod moves to another node.
 
